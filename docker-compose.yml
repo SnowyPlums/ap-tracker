@@ -1,0 +1,24 @@
+services:
+  ap-tracker-api:
+    build:
+      context: ./backend
+    container_name: ap-tracker-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+
+  ap-tracker-web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${AP_TRACKER_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: ap-tracker-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      AP_TRACKER_PUBLIC_API_URL: ${AP_TRACKER_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      - ap-tracker-api
