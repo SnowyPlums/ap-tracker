@@ -1,5 +1,7 @@
 # Archipelago Tracker
 
+If you want a live working version you can visit https://ap-tracker.plumhub.se/
+
 Self-hosted Archipelago room tracking with a Next.js frontend, FastAPI
 backend, PostgreSQL persistence, and live WebSocket updates.
 

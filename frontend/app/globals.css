@@ -95,7 +95,11 @@ a { color: inherit; }
 .progress > div { height: 100%; background: var(--accent); }
 .progress span { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text); font-size: 12px; text-shadow: 0 1px 2px #000; }
 .box-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.hint-autocomplete { position: relative; }
 .hint-input { width: 100%; }
+.hint-suggestions { position: absolute; z-index: 5; top: calc(100% + 3px); left: 0; right: 0; max-height: 190px; overflow: auto; padding: 4px; border: 1px solid #3d4662; border-radius: 7px; background: var(--panel-strong); box-shadow: 0 8px 20px #0006; }
+.hint-suggestion { display: block; width: 100%; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--text); text-align: left; font-size: 13px; }
+.hint-suggestion:hover, .hint-suggestion:focus { background: #333b56; }
 .death-total { display: grid; place-items: center; min-height: 48px; font-size: 24px; font-weight: 600; }
 .hint-information { padding: 12px; margin-top: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-strong); }
 .hint-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
@@ -131,10 +135,14 @@ a { color: inherit; }
 .location-icon { width: 20px; flex: 0 0 20px; text-align: center; font-weight: 700; }
 .masked-connection { cursor: pointer; }
 .masked-connection:not(.connection-visible) { user-select: none; }
+.connection-toggle { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.connection-toggle:hover, .connection-toggle:focus-visible { color: var(--accent); }
 .quick-glance { display: grid; width: min(100%, 620px); gap: 6px; padding: 12px; }
-.quick-glance-progress-grid { display: grid; grid-template-columns: max-content max-content; gap: 5px 10px; align-items: center; width: max-content; max-width: 100%; margin-top: 5px; overflow-x: auto; }
+.quick-glance-progress-grid { display: grid; grid-template-columns: max-content max-content max-content; gap: 5px 10px; align-items: center; width: max-content; max-width: 100%; margin-top: 5px; overflow-x: auto; }
 .quick-glance-progress-grid > span { white-space: nowrap; }
 .quick-glance-divider { grid-column: 1 / -1; height: 6px; }
+.checks-count-bubble { display: grid; place-items: center; min-width: 58px; height: 18px; padding: 0 7px; border-radius: 99px; background: var(--panel-strong); color: var(--muted); font-size: 11px; font-weight: 600; }
+.checks-count-placeholder { min-width: 58px; }
 .compact-progress-row { display: flex; align-items: center; gap: 7px; width: max-content; }
 .percent-bubble { display: grid; place-items: center; min-width: 58px; height: 18px; padding: 0 7px; border-radius: 99px; background: var(--panel-strong); color: var(--text); font-size: 11px; font-weight: 600; }
 .compact-progress { flex: 0 0 150px; width: 150px; height: 7px; border-radius: 99px; }
