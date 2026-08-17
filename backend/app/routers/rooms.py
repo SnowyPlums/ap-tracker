@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ..auth import current_user, require_user
+from ..auth import current_user, require_admin, require_user
 from ..db import get_db
 from ..models import Death, Event, Room, RoomMember, Slot, User
 from ..schemas import (
@@ -15,6 +15,7 @@ from ..schemas import (
     HintRequest,
     JoinRoomRequest,
     RoomCreateRequest,
+    RoomConnectionUpdateRequest,
     RoomResponse,
     RoomStatusRequest,
     RoomStateResponse,
@@ -211,6 +212,26 @@ async def get_room(
     room = await db.scalar(select(Room).options(selectinload(Room.slots)).where(Room.room_key == room_key, Room.archived.is_(False)))
     if not room or not await can_access_room(room, user, db):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="room not found")
+    return room
+
+
+@router.put("/{room_key}/connection", response_model=RoomResponse)
+async def update_room_connection(
+    room_key: str,
+    payload: RoomConnectionUpdateRequest,
+    request: Request,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> Room:
+    room = await editable_room(room_key, user, db)
+    host = payload.host.strip()
+    if not host:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="host must not be blank")
+    room.host = host
+    room.port = payload.port
+    await db.commit()
+    await db.refresh(room)
+    await request.app.state.tracker.restart_room(room.id)
     return room
 
 
@@ -412,7 +433,7 @@ async def archive_room(
 async def delete_room(
     room_key: str,
     request: Request,
-    user: User = Depends(require_user),
+    user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> None:
     room = await editable_room(room_key, user, db)

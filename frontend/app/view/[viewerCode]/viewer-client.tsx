@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Event, ViewerSlot, ViewerState, api, viewerWebsocketUrl } from "../../../lib/api";
 
 function statusLabel(status: string) {
-  return status === "completed" ? "Completed" : status === "canceled" ? "Canceled" : "In progress";
+  return status === "completed" ? "Completed" : status === "canceled" ? "Cancelled" : "In progress";
 }
 
 function ViewerHints({ slot }: { slot: ViewerSlot }) {

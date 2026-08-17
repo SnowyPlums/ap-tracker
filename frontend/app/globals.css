@@ -59,6 +59,8 @@ a { color: inherit; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
 .card { padding: 17px; text-decoration: none; transition: border-color .15s, transform .15s; }
 .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.card-link { display: block; text-decoration: none; }
+.room-delete { margin-top: 16px; }
 .card-head { display: flex; justify-content: space-between; gap: 10px; align-items: start; }
 .card-head h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
 .tag { padding: 3px 8px; border-radius: 99px; font-size: 12px; white-space: nowrap; background: #4a3d1d; color: var(--warn); }
@@ -71,6 +73,7 @@ a { color: inherit; }
 .back-button { display: inline-block; margin-bottom: 8px; }
 .room-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: end; }
 .room-meta { color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+.connection-editor { margin-bottom: 14px; }
 .room-overview { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, .7fr); gap: 14px; margin-bottom: 14px; align-items: stretch; }
 .access-panel { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 .access-panel > div { min-width: 230px; flex: 1; }

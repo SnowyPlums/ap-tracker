@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, Fragment, useEffect, useState } from "react";
 import { closestCenter, DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
-import { Event, Preferences, RoomState, Slot, api, websocketUrl } from "../../../lib/api";
+import { Event, Preferences, RoomState, Slot, User, api, websocketUrl } from "../../../lib/api";
 
 const BOXES = [
   { key: "checks", label: "Checks" },
@@ -31,7 +32,7 @@ function connectionIcon(status: string) {
 }
 
 function statusLabel(status: string) {
-  return status === "completed" ? "Completed" : status === "canceled" ? "Canceled" : "In progress";
+  return status === "completed" ? "Completed" : status === "canceled" ? "Cancelled" : "In progress";
 }
 
 function CompactProgress({ value }: { value: number }) {
@@ -127,6 +128,8 @@ function PlayerBoxes({ order, slot, itemNames, onAction, locationHref }: {
 }
 
 export default function RoomClient({ roomKey }: { roomKey: string }) {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
@@ -135,6 +138,8 @@ export default function RoomClient({ roomKey }: { roomKey: string }) {
   const [expandedLoaded, setExpandedLoaded] = useState(false);
   const [showInviteCode, setShowInviteCode] = useState(false);
   const [showConnection, setShowConnection] = useState(false);
+  const [editingConnection, setEditingConnection] = useState(false);
+  const [connectionForm, setConnectionForm] = useState({ host: "", port: "" });
   const [addSlot, setAddSlot] = useState({ slot_name: "", password: "", deathlink_listener: false });
   const [message, setMessage] = useState("");
   const [itemNames, setItemNames] = useState<Record<number, string[]>>({});
@@ -153,6 +158,7 @@ export default function RoomClient({ roomKey }: { roomKey: string }) {
   async function loadEvents() { setEvents(await api<Event[]>("/api/v1/rooms/" + roomKey + "/events")); }
 
   useEffect(() => {
+    api<User | null>("/api/v1/auth/me").then(setUser).catch(() => setUser(null));
     refresh().catch((error) => setMessage((error as Error).message));
     loadEvents().catch(() => undefined);
     api<Preferences>("/api/v1/preferences/player-boxes").then((next) => setPreferences({ ...DEFAULT_PREFERENCES, ...next })).catch(() => undefined);
@@ -184,6 +190,25 @@ export default function RoomClient({ roomKey }: { roomKey: string }) {
   }
 
   async function changeRoomStatus(nextStatus: "in_progress" | "completed" | "canceled") { try { await mutate("/status", "POST", { status: nextStatus }); } catch (error) { setMessage((error as Error).message); } }
+  function startEditingConnection() {
+    if (!state) return;
+    setConnectionForm({ host: state.host, port: String(state.port) });
+    setEditingConnection(true);
+  }
+  async function saveConnection(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await mutate("/connection", "PUT", { host: connectionForm.host, port: Number(connectionForm.port) });
+      setEditingConnection(false);
+    } catch (error) { setMessage((error as Error).message); }
+  }
+  async function deleteRoom() {
+    if (!confirm(`Delete "${state?.label}" immediately? This permanently removes the room and its data.`)) return;
+    try {
+      await api<void>("/api/v1/rooms/" + roomKey, { method: "DELETE" });
+      router.push("/");
+    } catch (error) { setMessage((error as Error).message); }
+  }
   async function savePreferences(next: Preferences) {
     setPreferences(next);
     try { await api<Preferences>("/api/v1/preferences/player-boxes", { method: "PUT", body: JSON.stringify(next) }); } catch (error) { setMessage((error as Error).message); }
@@ -204,7 +229,8 @@ export default function RoomClient({ roomKey }: { roomKey: string }) {
   return <div className="page-shell">
     <header className="topbar"><h1>🏝️ Archipelago Tracker</h1><div className="topbar-actions"><button className="button small" onClick={() => setShowPreferences(!showPreferences)}>Customize player boxes</button></div></header>
     <main className="main">
-      <div className="room-head"><div><Link className="button small back-button" href="/">← All games</Link><h2>{state.label}</h2><div className="room-meta masked-connection" role="button" tabIndex={0} onClick={() => setShowConnection(!showConnection)}>{showConnection ? state.host + ":" + state.port : "Connection hidden"} <CopyButton value={state.host + ":" + state.port} /> · {state.sleeping ? "Sleeping" : "Active"} · <span className={"tag " + state.game_status}>{statusLabel(state.game_status)}</span></div></div><div className="room-actions">{state.game_status === "canceled" ? <button className="button small" onClick={() => changeRoomStatus("in_progress")}>Uncancel room</button> : <><button className="button small" onClick={() => changeRoomStatus(nextRoomStatus)}>{state.game_status === "completed" ? "Mark in progress" : "Mark completed"}</button><button className="button small danger" onClick={() => changeRoomStatus("canceled")}>Cancel room</button></>}</div></div>
+      <div className="room-head"><div><Link className="button small back-button" href="/">← All games</Link><h2>{state.label}</h2><div className="room-meta masked-connection" role="button" tabIndex={0} onClick={() => setShowConnection(!showConnection)}>{showConnection ? state.host + ":" + state.port : "Connection hidden"} <CopyButton value={state.host + ":" + state.port} /> · {state.sleeping ? "Sleeping" : "Active"} · <span className={"tag " + state.game_status}>{statusLabel(state.game_status)}</span></div></div><div className="room-actions"><button className="button small" onClick={startEditingConnection}>Edit connection</button>{state.game_status === "canceled" ? <button className="button small" onClick={() => changeRoomStatus("in_progress")}>Uncancel room</button> : <><button className="button small" onClick={() => changeRoomStatus(nextRoomStatus)}>{state.game_status === "completed" ? "Mark in progress" : "Mark completed"}</button><button className="button small danger" onClick={() => changeRoomStatus("canceled")}>Cancel room</button></>}{user?.role === "admin" && <button className="button small danger" onClick={deleteRoom}>Delete room</button>}</div></div>
+      {editingConnection && <section className="panel connection-editor"><h3>Edit connection</h3><form className="form-row" onSubmit={saveConnection}><div className="field"><label htmlFor="connection-host">Host</label><input id="connection-host" className="input" required maxLength={255} value={connectionForm.host} onChange={(event) => setConnectionForm({ ...connectionForm, host: event.target.value })} /></div><div className="field"><label htmlFor="connection-port">Port</label><input id="connection-port" className="input" required inputMode="numeric" pattern="[0-9]*" type="text" value={connectionForm.port} onChange={(event) => setConnectionForm({ ...connectionForm, port: event.target.value.replace(/\D/g, "") })} /></div><button className="button primary" type="submit">Save connection</button><button className="button" type="button" onClick={() => setEditingConnection(false)}>Cancel</button></form></section>}
       {showPreferences && <PreferencesEditor preferences={preferences} onSave={savePreferences} />}
       <div className="room-overview"><div className="panel quick-glance"><strong>{state.totals.completed} completed games · {state.totals.deaths} total deaths</strong><div className="quick-glance-progress-grid"><span>{state.totals.checks_done}/{state.totals.checks_total} total checks</span><CompactProgress value={state.totals.checks_pct} /><span className="checks-count-placeholder" aria-hidden="true" /> <div className="quick-glance-divider" />{state.slots.map((slot) => <Fragment key={slot.id}><span>{slot.slot_name} · {slot.game || "Connecting..."}</span><CompactProgress value={slot.checks_pct} /><span className="checks-count-bubble">{slot.checks_done}/{slot.checks_total}</span></Fragment>)}</div></div><div className="panel access-panel"><div><strong>Player invite code</strong><br /><code>{showInviteCode ? state.invite_code : "••••••••••••"}</code></div><button className="button small" onClick={() => setShowInviteCode(!showInviteCode)}>{showInviteCode ? "Hide" : "Show"}</button><CopyButton value={state.invite_code} /><div><strong>View-only link</strong><br /><code>{typeof window === "undefined" ? "" : window.location.origin + "/view/" + state.viewer_code}</code></div><CopyButton value={typeof window === "undefined" ? "" : window.location.origin + "/view/" + state.viewer_code} /></div></div>
       <section className="player-grid">{state.slots.map((slot) => { const expanded = expandedSlots.has(slot.id); const visibleBoxes = expanded ? preferences.order : preferences.order.filter((key) => preferences.visible.includes(key)); return <article className="player-card" key={slot.id}><div className="player-title"><button className="button expand" onClick={() => toggleSlot(slot.id)}>{expanded ? "−" : "+"}</button><span className="status-icon">{connectionIcon(slot.status)}</span><div className="player-name"><strong>{slot.game || "Connecting..."}</strong> <span>({slot.slot_name})</span></div><strong>{slot.total_deaths}</strong></div><PlayerBoxes order={visibleBoxes} slot={slot} itemNames={itemNames[slot.id] || []} onAction={(path, body) => doSlotAction(slot.id, path, body)} locationHref={"/rooms/" + roomKey + "/slots/" + slot.id + "/locations"} /><HintInformation slot={slot} /></article>; })}</section>
