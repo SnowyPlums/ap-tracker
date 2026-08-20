@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..db import get_db
-from ..models import Death, Event, Room, Slot
+from ..models import Death, Event, Room, Slot, SlotHint
 from ..schemas import EventResponse, ViewerRoomStateResponse, ViewerSlotResponse
-from .rooms import slot_state
+from .rooms import hint_payload, slot_state
 
 
 router = APIRouter(prefix="/api/v1/view", tags=["viewer"])
@@ -20,7 +21,9 @@ async def viewer_room(code: str, db: AsyncSession) -> Room:
 
 async def build_viewer_state(room: Room, db: AsyncSession) -> ViewerRoomStateResponse:
     slots = list((await db.scalars(
-        select(Slot).where(Slot.room_id == room.id, Slot.archived.is_(False)).order_by(Slot.id)
+        select(Slot).options(selectinload(Slot.hint_links).selectinload(SlotHint.hint)).where(
+            Slot.room_id == room.id, Slot.archived.is_(False)
+        ).order_by(Slot.id)
     )).all())
     auto_deaths = dict((row.slot_id, row.count) for row in (await db.execute(
         select(Death.slot_id, func.count(Death.id).label("count"))
@@ -29,7 +32,11 @@ async def build_viewer_state(room: Room, db: AsyncSession) -> ViewerRoomStateRes
     )).all())
     result = []
     for slot in slots:
-        state = await slot_state(slot, auto_deaths.get(slot.id, 0))
+        state = await slot_state(
+            slot,
+            auto_deaths.get(slot.id, 0),
+            [hint_payload(link) for link in sorted(slot.hint_links, key=lambda link: link.hint_id, reverse=True)],
+        )
         result.append(ViewerSlotResponse(
             id=state.id,
             slot_name=state.slot_name,
@@ -49,6 +56,7 @@ async def build_viewer_state(room: Room, db: AsyncSession) -> ViewerRoomStateRes
         game_status=room.game_status,
         room_key=room.room_key,
         sleeping=any(slot.status == "sleeping" for slot in slots),
+        revision=room.state_version,
         totals={
             "checks_done": sum(slot.checks_done for slot in result),
             "checks_total": sum(slot.checks_total for slot in result),

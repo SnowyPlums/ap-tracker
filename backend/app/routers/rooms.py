@@ -8,10 +8,11 @@ from sqlalchemy.orm import selectinload
 
 from ..auth import current_user, require_admin, require_user
 from ..db import get_db
-from ..models import Death, Event, Room, RoomMember, Slot, User
+from ..models import Death, Event, Hint, Room, RoomMember, Slot, SlotHint, SlotLocation, User
 from ..schemas import (
     CompletionRequest,
     EventResponse,
+    HintFavoriteRequest,
     HintRequest,
     JoinRoomRequest,
     RoomCreateRequest,
@@ -48,7 +49,30 @@ async def editable_room(room_key: str, user: User, db: AsyncSession) -> Room:
     return await accessible_room(room_key, user, db)
 
 
-async def slot_state(slot: Slot, auto_deaths: int) -> SlotResponse:
+def hint_payload(link: SlotHint) -> dict:
+    hint = link.hint
+    return {
+        "hint_id": hint.id,
+        "hint_order": hint.id,
+        "hint_key": hint.external_key,
+        "finding_player": hint.finding_player_name,
+        "receiving_player": hint.receiving_player_name,
+        "finding_game": hint.finding_game,
+        "receiving_game": hint.receiving_game,
+        "location": hint.location_name,
+        "item": hint.item_name,
+        "key_item": bool(hint.item_flags & 1),
+        "found": hint.found,
+        "favorite": bool(link.favorite) and not hint.found,
+    }
+
+
+async def slot_state(
+    slot: Slot,
+    auto_deaths: int,
+    hints: list[dict] | None = None,
+    locations: list[dict] | None = None,
+) -> SlotResponse:
     total = slot.checks_total or 0
     done = slot.checks_done or 0
     completed = bool(slot.completed_override) if slot.completed_override is not None else slot.client_status >= 30
@@ -64,8 +88,8 @@ async def slot_state(slot: Slot, auto_deaths: int) -> SlotResponse:
         remaining_checks=max(total - done, 0),
         hint_points=slot.hint_points,
         completed=completed,
-        hints=slot.hints or [],
-        locations=slot.locations or [],
+        hints=hints or [],
+        locations=locations or [],
         auto_deaths=auto_deaths,
         manual_deaths=slot.manual_deaths,
         total_deaths=auto_deaths + slot.manual_deaths,
@@ -98,7 +122,9 @@ async def refresh_room_completion(db: AsyncSession, room_id: int) -> bool:
 
 async def build_room_state(db: AsyncSession, room: Room) -> RoomStateResponse:
     slots = list((await db.scalars(
-        select(Slot).where(Slot.room_id == room.id, Slot.archived.is_(False)).order_by(Slot.id)
+        select(Slot).options(selectinload(Slot.hint_links).selectinload(SlotHint.hint)).where(
+            Slot.room_id == room.id, Slot.archived.is_(False)
+        ).order_by(Slot.id)
     )).all())
     death_counts = dict(
         (row.slot_id, row.count)
@@ -108,7 +134,14 @@ async def build_room_state(db: AsyncSession, room: Room) -> RoomStateResponse:
             .group_by(Death.slot_id)
         )).all()
     )
-    slot_responses = [await slot_state(slot, death_counts.get(slot.id, 0)) for slot in slots]
+    slot_responses = [
+        await slot_state(
+            slot,
+            death_counts.get(slot.id, 0),
+            [hint_payload(link) for link in sorted(slot.hint_links, key=lambda link: link.hint_id, reverse=True)],
+        )
+        for slot in slots
+    ]
     completed_count = sum(1 for slot in slot_responses if slot.completed)
     return RoomStateResponse(
         id=room.id,
@@ -119,6 +152,7 @@ async def build_room_state(db: AsyncSession, room: Room) -> RoomStateResponse:
         room_key=room.room_key,
         invite_code=room.invite_code,
         viewer_code=room.viewer_code,
+        revision=room.state_version,
         sleeping=any(slot.status == "sleeping" for slot in slot_responses),
         totals={
             "checks_done": sum(slot.checks_done for slot in slot_responses),
@@ -399,6 +433,48 @@ async def send_hint(
     return {"message": message}
 
 
+@router.post("/{room_key}/slots/{slot_id}/hints/favorite", response_model=SlotResponse)
+async def set_hint_favorite(
+    room_key: str,
+    slot_id: int,
+    payload: HintFavoriteRequest,
+    request: Request,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> SlotResponse:
+    room = await editable_room(room_key, user, db)
+    slot = await db.scalar(select(Slot).where(
+        Slot.id == slot_id,
+        Slot.room_id == room.id,
+        Slot.archived.is_(False),
+    ))
+    if not slot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slot not found")
+    link = await db.scalar(
+        select(SlotHint).options(selectinload(SlotHint.hint)).join(SlotHint.hint).where(
+            SlotHint.slot_id == slot.id,
+            Hint.external_key == payload.hint_key,
+        ).with_for_update()
+    )
+    if not link:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="hint not found")
+    next_favorite = bool(payload.favorite) and not link.hint.found
+    changed = link.favorite != next_favorite
+    link.favorite = next_favorite
+    if changed:
+        room.state_version += 1
+    await db.commit()
+    await db.refresh(slot)
+    auto_deaths = await db.scalar(select(func.count(Death.id)).where(Death.slot_id == slot.id, Death.manual.is_(False)))
+    await request.app.state.tracker.publish_room(room.id)
+    links = list((await db.scalars(
+        select(SlotHint).options(selectinload(SlotHint.hint)).join(SlotHint.hint).where(
+            SlotHint.slot_id == slot.id
+        ).order_by(SlotHint.hint_id.desc())
+    )).all())
+    return await slot_state(slot, auto_deaths or 0, [hint_payload(item) for item in links])
+
+
 @router.post("/{room_key}/status", response_model=RoomResponse)
 async def set_room_status(
     room_key: str,
@@ -459,6 +535,27 @@ async def item_names(
     if not slot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slot not found")
     return await request.app.state.tracker.item_names(slot.id)
+
+
+@router.get("/{room_key}/slots/{slot_id}/locations", response_model=list[dict])
+async def slot_locations(
+    room_key: str,
+    slot_id: int,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    room = await accessible_room(room_key, user, db)
+    slot = await db.scalar(select(Slot).where(
+        Slot.id == slot_id,
+        Slot.room_id == room.id,
+        Slot.archived.is_(False),
+    ))
+    if not slot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="slot not found")
+    rows = (await db.scalars(
+        select(SlotLocation).where(SlotLocation.slot_id == slot.id).order_by(SlotLocation.name)
+    )).all()
+    return [{"id": row.location_id, "name": row.name, "checked": row.checked} for row in rows]
 
 
 @router.post("/{room_key}/reconnect", status_code=status.HTTP_202_ACCEPTED)

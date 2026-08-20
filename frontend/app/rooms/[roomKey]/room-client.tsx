@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, Fragment, useEffect, useState } from "react";
+import { FormEvent, Fragment, useEffect, useRef, useState } from "react";
 import { closestCenter, DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { Event, Preferences, RoomState, Slot, User, api, websocketUrl } from "../../../lib/api";
@@ -93,23 +93,80 @@ function SlotBox({ slot, box, itemNames, onAction, locationHref }: {
   </div></div>;
 }
 
-function HintInformation({ slot }: { slot: Slot }) {
+function hintKey(hint: Record<string, unknown>) {
+  return String(hint.hint_key || ["finding_player", "receiving_player", "location", "item"].map((field) => String(hint[field] || "")).join(":"));
+}
+
+function HintRow({ hint, onToggleFavorite }: { hint: Record<string, unknown>; onToggleFavorite?: () => void }) {
+  const found = Boolean(hint.found);
+  const favorite = Boolean(hint.favorite) && !found;
+  return <div className={"hint-row " + (found ? "found" : "pending")}>
+    {onToggleFavorite ? <button className={"hint-favorite " + (favorite ? "active" : "")} type="button" onClick={onToggleFavorite} title={favorite ? "Remove from favorites" : "Add to favorites"} aria-label={favorite ? "Remove hint from favorites" : "Add hint to favorites"} aria-pressed={favorite}>★</button> : <span className="hint-favorite">★</span>}
+    <span className={"hint-state-icon " + (found ? "found" : "pending")} title={found ? "Found" : "Not found"} aria-label={found ? "Found" : "Not found"}>{found ? "✓" : "○"}</span>
+    <div className="hint-fields">
+      <div className="hint-field"><span>Receiver</span><strong className="hint-player">{String(hint.receiving_player || "Unknown player")}</strong></div>
+      <div className="hint-field"><span>Receiver game</span><strong className="hint-game">{String(hint.receiving_game || "Unknown game")}</strong></div>
+      <div className="hint-field"><span>Item</span><strong className={"hint-item " + (hint.key_item ? "hint-key" : "")}>{String(hint.item || "Unknown item")}</strong></div>
+      <div className="hint-field"><span>Finder</span><strong className="hint-player">{String(hint.finding_player || "Unknown player")}</strong></div>
+      <div className="hint-field"><span>Finder game</span><strong className="hint-game">{String(hint.finding_game || "Unknown game")}</strong></div>
+      <div className="hint-field"><span>Location</span><strong className="hint-location">{String(hint.location || "Unknown location")}</strong></div>
+    </div>
+  </div>;
+}
+
+function HintSection({ label, hints, open, onToggleOpen, onToggleFavorite }: { label: string; hints: Record<string, unknown>[]; open: boolean; onToggleOpen: () => void; onToggleFavorite?: (hint: Record<string, unknown>) => void }) {
+  return <div className="hint-section"><button className="hint-section-toggle" type="button" onClick={onToggleOpen} aria-expanded={open}><span>{label}</span><span className="hint-section-chevron" aria-hidden="true">{open ? "▾" : "▸"}</span></button>{open && (hints.length ? <div className="hint-list">{hints.map((hint, index) => <HintRow key={hintKey(hint) || String(index)} hint={hint} onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(hint) : undefined} />)}</div> : <p className="hint-section-empty">No hints in this section.</p>)}</div>;
+}
+
+function HintInformation({ slot, onToggleFavorite }: { slot: Slot; onToggleFavorite: (hint: Record<string, unknown>) => void }) {
   const [open, setOpen] = useState(false);
+  const [trackedOpen, setTrackedOpen] = useState(() => slot.hints.some((hint) => Boolean(hint.favorite) && !hint.found));
+  const [activeOpen, setActiveOpen] = useState(true);
+  const [completedOpen, setCompletedOpen] = useState(false);
   if (!slot.hints.length) return null;
   const found = slot.hints.filter((hint) => Boolean(hint.found)).length;
-  return <div className="hint-information"><button className="button small" onClick={() => setOpen(!open)}>{open ? "Hide hints" : "Show hints"} ({found}/{slot.hints.length})</button>{open && <div className="hint-list">{slot.hints.map((hint, index) =>
-    <div className={"hint-row " + (hint.found ? "found" : "pending")} key={index}>
-      <span className={"hint-state-icon " + (hint.found ? "found" : "pending")} title={hint.found ? "Found" : "Not found"} aria-label={hint.found ? "Found" : "Not found"}>{hint.found ? "✓" : "○"}</span>
-      <div className="hint-fields">
-        <div className="hint-field"><span>Finder</span><strong className="hint-player">{String(hint.finding_player || "Unknown player")}</strong></div>
-        <div className="hint-field"><span>Finder game</span><strong className="hint-game">{String(hint.finding_game || "Unknown game")}</strong></div>
-        <div className="hint-field"><span>Receiver</span><strong className="hint-player">{String(hint.receiving_player || "Unknown player")}</strong></div>
-        <div className="hint-field"><span>Receiver game</span><strong className="hint-game">{String(hint.receiving_game || "Unknown game")}</strong></div>
-        <div className="hint-field"><span>Item</span><strong className={"hint-item " + (hint.key_item ? "hint-key" : "")}>{String(hint.item || "Unknown item")}</strong></div>
-        <div className="hint-field"><span>Location</span><strong className="hint-location">{String(hint.location || "Unknown location")}</strong></div>
-      </div>
-    </div>
-  )}</div>}</div>;
+  const ordered = [...slot.hints].sort((left, right) => Number(right.hint_order || 0) - Number(left.hint_order || 0));
+  const favorites = ordered.filter((hint) => Boolean(hint.favorite) && !hint.found);
+  const active = ordered.filter((hint) => !hint.found && !hint.favorite);
+  const completed = ordered.filter((hint) => Boolean(hint.found));
+  return <div className="hint-information"><button className="button small" onClick={() => setOpen(!open)}>{open ? "Hide hints" : "Show hints"} ({found}/{slot.hints.length})</button>{open && <>
+    <HintSection label="Tracked" hints={favorites} open={trackedOpen} onToggleOpen={() => setTrackedOpen((current) => !current)} onToggleFavorite={onToggleFavorite} />
+    <HintSection label="Active Hints" hints={active} open={activeOpen} onToggleOpen={() => setActiveOpen((current) => !current)} onToggleFavorite={onToggleFavorite} />
+    <HintSection label="Completed Hints" hints={completed} open={completedOpen} onToggleOpen={() => setCompletedOpen((current) => !current)} />
+  </>}</div>;
+}
+
+function ActivityFeed({ events }: { events: Event[] }) {
+  const logRef = useRef<HTMLDivElement>(null);
+  const atNewestRef = useRef(true);
+  const [atNewest, setAtNewest] = useState(true);
+
+  function updatePosition() {
+    const log = logRef.current;
+    if (!log) return;
+    const newest = log.scrollHeight - log.clientHeight - log.scrollTop <= 8;
+    atNewestRef.current = newest;
+    setAtNewest(newest);
+  }
+
+  useEffect(() => {
+    const log = logRef.current;
+    if (!log) return;
+    requestAnimationFrame(() => {
+      if (atNewestRef.current) log.scrollTop = log.scrollHeight;
+      updatePosition();
+    });
+  }, [events]);
+
+  function goToNewest() {
+    const log = logRef.current;
+    if (!log) return;
+    log.scrollTop = log.scrollHeight;
+    atNewestRef.current = true;
+    setAtNewest(true);
+  }
+
+  return <section className="panel activity-panel"><div className="activity-heading"><h3>Activity feed</h3>{!atNewest && <button className="button small" onClick={goToNewest}>To Newest</button>}</div><div className="event-log" ref={logRef} onScroll={updatePosition}>{events.map((event) => <div className="event-row" key={event.id}><span className="event-time">{new Date(event.ts).toLocaleTimeString()}</span><span dangerouslySetInnerHTML={{ __html: event.html || event.text }} /></div>)}</div></section>;
 }
 
 function SortablePreviewBox({ box, enabled, onToggle }: { box: typeof BOXES[number]; enabled: boolean; onToggle: () => void }) {
@@ -143,32 +200,99 @@ export default function RoomClient({ roomKey }: { roomKey: string }) {
   const [addSlot, setAddSlot] = useState({ slot_name: "", password: "", deathlink_listener: false });
   const [message, setMessage] = useState("");
   const [itemNames, setItemNames] = useState<Record<number, string[]>>({});
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const refreshQueued = useRef(false);
+  const eventsInFlight = useRef<Promise<void> | null>(null);
+  const eventsQueued = useRef(false);
+  const loadedItemNames = useRef(new Set<number>());
+  const latestEventId = useRef(0);
+  const latestRevision = useRef(0);
 
   async function refresh() {
-    const next = await api<RoomState>("/api/v1/rooms/" + roomKey + "/state");
-    setState(next);
-    await Promise.all(next.slots.map(async (slot) => {
-      try {
-        const names = await api<string[]>("/api/v1/rooms/" + roomKey + "/slots/" + slot.id + "/item-names");
-        setItemNames((current) => ({ ...current, [slot.id]: names }));
-      } catch { return; }
-    }));
+    if (refreshInFlight.current) {
+      refreshQueued.current = true;
+      return refreshInFlight.current;
+    }
+    const run = (async () => {
+      const next = await api<RoomState>("/api/v1/rooms/" + roomKey + "/state");
+      if (next.revision < latestRevision.current) return;
+      latestRevision.current = next.revision;
+      setState(next);
+      const namesToLoad = next.slots.filter((slot) => slot.game && !loadedItemNames.current.has(slot.id));
+      await Promise.all(namesToLoad.map(async (slot) => {
+        try {
+          const names = await api<string[]>("/api/v1/rooms/" + roomKey + "/slots/" + slot.id + "/item-names");
+          loadedItemNames.current.add(slot.id);
+          setItemNames((current) => ({ ...current, [slot.id]: names }));
+        } catch { return; }
+      }));
+    })();
+    refreshInFlight.current = run;
+    try { await run; } finally {
+      refreshInFlight.current = null;
+      if (refreshQueued.current) {
+        refreshQueued.current = false;
+        void refresh();
+      }
+    }
   }
 
-  async function loadEvents() { setEvents(await api<Event[]>("/api/v1/rooms/" + roomKey + "/events")); }
+  async function loadEvents() {
+    if (eventsInFlight.current) {
+      eventsQueued.current = true;
+      return eventsInFlight.current;
+    }
+    const afterId = latestEventId.current;
+    const run = (async () => {
+      const incoming = await api<Event[]>("/api/v1/rooms/" + roomKey + "/events?after_id=" + afterId);
+      if (incoming.length) latestEventId.current = Math.max(latestEventId.current, ...incoming.map((event) => event.id));
+      setEvents((current) => {
+        const byId = new Map(current.map((event) => [event.id, event]));
+        incoming.forEach((event) => byId.set(event.id, event));
+        return [...byId.values()].sort((left, right) => left.id - right.id).slice(-500);
+      });
+    })();
+    eventsInFlight.current = run;
+    try { await run; } finally {
+      eventsInFlight.current = null;
+      if (eventsQueued.current) {
+        eventsQueued.current = false;
+        void loadEvents();
+      }
+    }
+  }
 
   useEffect(() => {
     api<User | null>("/api/v1/auth/me").then(setUser).catch(() => setUser(null));
     refresh().catch((error) => setMessage((error as Error).message));
     loadEvents().catch(() => undefined);
     api<Preferences>("/api/v1/preferences/player-boxes").then((next) => setPreferences({ ...DEFAULT_PREFERENCES, ...next })).catch(() => undefined);
-    const socket = new WebSocket(websocketUrl(roomKey));
-    socket.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      if (payload.type === "room.updated" || payload.type === "room.event") { refresh().catch(() => undefined); loadEvents().catch(() => undefined); }
+    let socket: WebSocket | null = null;
+    let reconnectTimer = 0;
+    let stopped = false;
+    const connect = () => {
+      if (stopped) return;
+      socket = new WebSocket(websocketUrl(roomKey));
+      socket.onmessage = (event) => {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "room.updated" || payload.type === "room.event") { refresh().catch(() => undefined); loadEvents().catch(() => undefined); }
+      };
+      socket.onclose = () => {
+        if (!stopped) reconnectTimer = window.setTimeout(connect, 1500);
+      };
+      socket.onerror = () => setMessage("Live updates unavailable; retrying connection.");
     };
-    socket.onerror = () => setMessage("Live updates unavailable; actions still refresh normally.");
-    return () => socket.close();
+    connect();
+    const refreshTimer = window.setInterval(() => {
+      refresh().catch(() => undefined);
+      loadEvents().catch(() => undefined);
+    }, 10000);
+    return () => {
+      window.clearInterval(refreshTimer);
+      stopped = true;
+      window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
   }, [roomKey]);
 
   useEffect(() => {
@@ -233,8 +357,8 @@ export default function RoomClient({ roomKey }: { roomKey: string }) {
       {editingConnection && <section className="panel connection-editor"><h3>Edit connection</h3><form className="form-row" onSubmit={saveConnection}><div className="field"><label htmlFor="connection-host">Host</label><input id="connection-host" className="input" required maxLength={255} value={connectionForm.host} onChange={(event) => setConnectionForm({ ...connectionForm, host: event.target.value })} /></div><div className="field"><label htmlFor="connection-port">Port</label><input id="connection-port" className="input" required inputMode="numeric" pattern="[0-9]*" type="text" value={connectionForm.port} onChange={(event) => setConnectionForm({ ...connectionForm, port: event.target.value.replace(/\D/g, "") })} /></div><button className="button primary" type="submit">Save connection</button><button className="button" type="button" onClick={() => setEditingConnection(false)}>Cancel</button></form></section>}
       {showPreferences && <PreferencesEditor preferences={preferences} onSave={savePreferences} />}
       <div className="room-overview"><div className="panel quick-glance"><strong>{state.totals.completed} completed games · {state.totals.deaths} total deaths</strong><div className="quick-glance-progress-grid"><span>{state.totals.checks_done}/{state.totals.checks_total} total checks</span><CompactProgress value={state.totals.checks_pct} /><span className="checks-count-placeholder" aria-hidden="true" /> <div className="quick-glance-divider" />{state.slots.map((slot) => <Fragment key={slot.id}><span>{slot.slot_name} · {slot.game || "Connecting..."}</span><CompactProgress value={slot.checks_pct} /><span className="checks-count-bubble">{slot.checks_done}/{slot.checks_total}</span></Fragment>)}</div></div><div className="panel access-panel"><div><strong>Player invite code</strong><br /><code>{showInviteCode ? state.invite_code : "••••••••••••"}</code></div><button className="button small" onClick={() => setShowInviteCode(!showInviteCode)}>{showInviteCode ? "Hide" : "Show"}</button><CopyButton value={state.invite_code} /><div><strong>View-only link</strong><br /><code>{typeof window === "undefined" ? "" : window.location.origin + "/view/" + state.viewer_code}</code></div><CopyButton value={typeof window === "undefined" ? "" : window.location.origin + "/view/" + state.viewer_code} /></div></div>
-      <section className="player-grid">{state.slots.map((slot) => { const expanded = expandedSlots.has(slot.id); const visibleBoxes = expanded ? preferences.order : preferences.order.filter((key) => preferences.visible.includes(key)); return <article className="player-card" key={slot.id}><div className="player-title"><button className="button expand" onClick={() => toggleSlot(slot.id)}>{expanded ? "−" : "+"}</button><span className="status-icon">{connectionIcon(slot.status)}</span><div className="player-name"><strong>{slot.game || "Connecting..."}</strong> <span>({slot.slot_name})</span></div><strong>{slot.total_deaths}</strong></div><PlayerBoxes order={visibleBoxes} slot={slot} itemNames={itemNames[slot.id] || []} onAction={(path, body) => doSlotAction(slot.id, path, body)} locationHref={"/rooms/" + roomKey + "/slots/" + slot.id + "/locations"} /><HintInformation slot={slot} /></article>; })}</section>
-      <section className="panel" style={{ marginTop: 16 }}><h3>Activity feed</h3><div className="event-log">{events.map((event) => <div className="event-row" key={event.id}><span className="event-time">{new Date(event.ts).toLocaleTimeString()}</span><span dangerouslySetInnerHTML={{ __html: event.html || event.text }} /></div>)}</div></section>
+      <section className="player-grid">{state.slots.map((slot) => { const expanded = expandedSlots.has(slot.id); const visibleBoxes = expanded ? preferences.order : preferences.order.filter((key) => preferences.visible.includes(key)); return <article className="player-card" key={slot.id}><div className="player-title"><button className="button expand" onClick={() => toggleSlot(slot.id)}>{expanded ? "−" : "+"}</button><span className="status-icon">{connectionIcon(slot.status)}</span><div className="player-name"><strong>{slot.game || "Connecting..."}</strong> <span>({slot.slot_name})</span></div><strong>{slot.total_deaths}</strong></div><PlayerBoxes order={visibleBoxes} slot={slot} itemNames={itemNames[slot.id] || []} onAction={(path, body) => doSlotAction(slot.id, path, body)} locationHref={"/rooms/" + roomKey + "/slots/" + slot.id + "/locations"} /><HintInformation slot={slot} onToggleFavorite={(hint) => doSlotAction(slot.id, "/hints/favorite", { hint_key: hintKey(hint), favorite: !Boolean(hint.favorite) })} /></article>; })}</section>
+      <ActivityFeed events={events} />
       <section className="panel" style={{ marginTop: 16 }}><h3>Add player slot</h3><form className="form-row" onSubmit={addPlayer}><div className="field"><label>Slot name</label><input className="input" required value={addSlot.slot_name} onChange={(event) => setAddSlot({ ...addSlot, slot_name: event.target.value })} /></div><div className="field"><label>Room password</label><input className="input" type="password" value={addSlot.password} onChange={(event) => setAddSlot({ ...addSlot, password: event.target.value })} /></div><label className="deathlink-option"><input type="checkbox" checked={addSlot.deathlink_listener} onChange={(event) => setAddSlot({ ...addSlot, deathlink_listener: event.target.checked })} /> Enable DeathLink tracking</label><button className="button primary">Add player</button></form></section>
       {message && <p className="error">{message}</p>}
     </main>

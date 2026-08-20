@@ -21,9 +21,10 @@ backend, PostgreSQL persistence, and live WebSocket updates.
 
        docker compose up -d --build
 
-8. Apply database migrations:
+8. Database migrations run automatically before the API starts. You can verify
+   the applied revision with:
 
-       docker exec ap-tracker-api alembic upgrade head
+       docker exec ap-tracker-api alembic current
 
 The frontend is exposed on port 3000 and the API on port 8000. Nginx Proxy
 Manager can proxy the frontend and API separately, including WebSocket

@@ -76,6 +76,7 @@ class ViewerRoomStateResponse(BaseModel):
     game_status: str
     room_key: str
     sleeping: bool
+    revision: int = 0
     totals: dict[str, float]
     slots: list[ViewerSlotResponse]
 
@@ -96,6 +97,11 @@ class CompletionRequest(BaseModel):
 
 class HintRequest(BaseModel):
     item_name: str = Field(default="", max_length=255)
+
+
+class HintFavoriteRequest(BaseModel):
+    hint_key: str = Field(min_length=1, max_length=1000)
+    favorite: bool
 
 
 class SlotResponse(BaseModel):
@@ -120,6 +126,7 @@ class SlotResponse(BaseModel):
 
 class RoomStateResponse(RoomResponse):
     sleeping: bool
+    revision: int = 0
     totals: dict[str, float]
     slots: list[SlotResponse]
 

@@ -10,6 +10,9 @@ engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
     pool_recycle=1800,
+    pool_size=20,
+    max_overflow=30,
+    pool_timeout=30,
 )
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

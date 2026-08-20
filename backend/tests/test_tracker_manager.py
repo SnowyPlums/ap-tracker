@@ -52,6 +52,33 @@ class TrackerManagerTests(unittest.TestCase):
         self.assertEqual(hint["location"], "Celestial Resort A - Cassette")
         self.assertEqual(hint["item"], "Key")
 
+    def test_hints_get_newest_first_order_and_found_hints_leave_favorites(self) -> None:
+        first = self.manager._resolve_hint(
+            {"finding_player": 1, "receiving_player": 1, "location": 200, "item": 100, "found": False},
+            {"1": {"name": "Celeste-player-1", "game": "Celeste"}},
+            1,
+        )
+        second = {**first, "location": "Other location", "hint_key": "1:1:201:100"}
+        merged = self.manager._merge_hints(1, [], [first, second], {self.manager._hint_identity(second)})
+
+        self.assertEqual([hint["hint_order"] for hint in merged], [1, 2])
+        self.assertFalse(merged[0]["favorite"])
+        self.assertTrue(merged[1]["favorite"])
+
+        reordered = self.manager._merge_hints(1, merged, [second, first], set())
+        self.assertEqual(
+            {hint["hint_key"]: hint["hint_order"] for hint in reordered},
+            {hint["hint_key"]: hint["hint_order"] for hint in merged},
+        )
+
+        completed = self.manager._merge_hints(
+            1,
+            merged,
+            [{**first, "found": True}, second],
+            set(),
+        )
+        self.assertFalse(completed[0]["favorite"])
+
 
 if __name__ == "__main__":
     unittest.main()

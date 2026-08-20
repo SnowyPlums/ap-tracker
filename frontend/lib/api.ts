@@ -25,7 +25,7 @@ export type Slot = {
   auto_deaths: number; manual_deaths: number; total_deaths: number; status_label: string;
 };
 export type RoomState = Room & {
-  sleeping: boolean; totals: { checks_done: number; checks_total: number; checks_pct: number; completed: number; deaths: number };
+  sleeping: boolean; revision: number; totals: { checks_done: number; checks_total: number; checks_pct: number; completed: number; deaths: number };
   slots: Slot[];
 };
 export type ViewerSlot = {
@@ -35,7 +35,7 @@ export type ViewerSlot = {
   total_deaths: number;
 };
 export type ViewerState = {
-  id: number; label: string; game_status: string; room_key: string; sleeping: boolean;
+  id: number; label: string; game_status: string; room_key: string; sleeping: boolean; revision: number;
   totals: { checks_done: number; checks_total: number; checks_pct: number; completed: number; deaths: number };
   slots: ViewerSlot[];
 };

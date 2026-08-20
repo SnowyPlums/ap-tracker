@@ -105,14 +105,21 @@ a { color: inherit; }
 .hint-suggestion:hover, .hint-suggestion:focus { background: #333b56; }
 .death-total { display: grid; place-items: center; min-height: 48px; font-size: 24px; font-weight: 600; }
 .hint-information { padding: 12px; margin-top: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-strong); }
-.hint-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-.hint-row { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 9px; padding: 8px; border: 1px solid #3a4058; border-radius: 8px; background: #202437; font-size: 13px; }
+.hint-section { margin-top: 10px; }
+.hint-section-toggle { display: flex; justify-content: flex-start; align-items: center; gap: 6px; width: 100%; padding: 5px 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 11px; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
+.hint-section-toggle:hover, .hint-section-toggle:focus-visible { color: var(--text); }
+.hint-section-chevron { color: var(--accent); font-size: 16px; line-height: 1; }
+.hint-section-empty { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.hint-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.hint-row { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); gap: 9px; align-items: start; padding: 8px; border: 1px solid #3a4058; border-radius: 8px; background: #202437; font-size: 13px; }
 .hint-row.pending { border-color: #74602a; }
 .hint-row.found { border-color: #347454; background: #1d302c; }
+.hint-favorite { width: 20px; height: 20px; padding: 0; border: 0; background: transparent; color: #596078; font-size: 17px; line-height: 1; }
+.hint-favorite:hover, .hint-favorite:focus-visible, .hint-favorite.active { color: var(--warn); }
 .hint-state-icon { display: grid; place-items: center; width: 18px; height: 18px; border: 1px solid currentColor; border-radius: 50%; font-size: 12px; font-weight: 700; line-height: 1; }
 .hint-state-icon.pending { color: var(--warn); }
 .hint-state-icon.found { color: var(--good); }
-.hint-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.hint-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 14px; }
 .hint-field { display: grid; gap: 1px; min-width: 0; }
 .hint-field > span { color: var(--muted); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
 .hint-field strong { overflow-wrap: anywhere; }
@@ -121,7 +128,10 @@ a { color: inherit; }
 .hint-item { color: #9bd4ff; }
 .hint-key { color: #d0a0ff; }
 .hint-game { color: var(--text); }
-.event-log { max-height: 340px; overflow: auto; }
+.activity-panel { margin-top: 16px; }
+.activity-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.activity-heading h3 { margin: 0; }
+.event-log { height: 340px; max-height: 340px; overflow: auto; }
 .event-row { padding: 5px 0; border-bottom: 1px dotted var(--line); font-size: 13px; }
 .event-time { color: var(--muted); margin-right: 7px; }
 .log-player { color: #f6df8a; }
@@ -174,8 +184,8 @@ a { color: inherit; }
   .box { padding: 9px; }
   .player-card { padding: 10px; }
   .hint-list { grid-template-columns: 1fr; }
-  .hint-row { grid-template-columns: max-content minmax(0, 1fr); gap: 7px; }
-  .hint-fields { grid-template-columns: 1fr 1fr; }
+  .hint-row { grid-template-columns: max-content max-content minmax(0, 1fr); gap: 7px; }
+  .hint-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 7px; }
   .compact-progress-row { width: 210px; flex: 0 0 210px; }
   .compact-progress { flex-basis: 115px; width: 115px; }
 }
